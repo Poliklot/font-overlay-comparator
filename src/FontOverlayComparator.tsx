@@ -497,8 +497,8 @@ export default function FontOverlayComparator() {
             </button>
           </div>
 
-          <div className="mt-4">
-            <canvas ref={canvasRef} className="w-full rounded-2xl shadow-sm border border-neutral-200" />
+          <div className="mt-4 w-fit max-w-full overflow-auto rounded-2xl shadow-sm border border-neutral-200">
+            <canvas ref={canvasRef} className="w-full" />
           </div>
 
           {metrics && (
