@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://poliklot.github.io/font-overlay-comparator/sitemap.xml
