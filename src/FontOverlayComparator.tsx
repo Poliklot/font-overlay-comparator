@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent as ReactDragEvent, type ReactNode } from "react";
 
 // === Font Overlay Comparator (Pure Frontend) ===
 // Особенности:
@@ -10,30 +10,45 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 // - Экспорт результата в PNG
 // Вся логика — на клиенте. Никакого бэкенда.
 
+type OverlayMode = "red-cyan" | "difference";
+type GridPreset = "basic-latin" | "caps" | "lower" | "digits" | "punct" | "custom";
+type SlotLabel = "A" | "B";
+
+interface LoadedFont {
+  name: string;
+  displayName: string;
+  face: FontFace;
+}
+
+interface Msg {
+  id: number;
+  msg: string;
+}
+
 export default function FontOverlayComparator() {
-  const [fontA, setFontA] = useState(null); // { name, displayName, face }
-  const [fontB, setFontB] = useState(null);
-  const [text, setText] = useState("Hamburgefonstiv 0123456789 ABCD abcd");
-  const [fontSize, setFontSize] = useState(120);
-  const [letterSpacing, setLetterSpacing] = useState(0); // px
-  const [dx, setDx] = useState(0); // смещение B
-  const [dy, setDy] = useState(0);
-  const [overlayMode, setOverlayMode] = useState("red-cyan"); // 'red-cyan' | 'difference'
-  const [showChecker, setShowChecker] = useState(true);
-  const [stroke, setStroke] = useState(false);
-  const [strokeWidth, setStrokeWidth] = useState(1);
-  const [gridOpen, setGridOpen] = useState(false);
-  const [isDragging, setIsDragging] = useState(false); // подсветка Drop-зоны
-  const dragCounter = useRef(0);
-  const [gridCharsPreset, setGridCharsPreset] = useState("basic-latin");
-  const [customChars, setCustomChars] = useState("");
-  const [messages, setMessages] = useState([]);
+  const [fontA, setFontA] = useState<LoadedFont | null>(null); // { name, displayName, face }
+  const [fontB, setFontB] = useState<LoadedFont | null>(null);
+  const [text, setText] = useState<string>("Hamburgefonstiv 0123456789 ABCD abcd");
+  const [fontSize, setFontSize] = useState<number>(120);
+  const [letterSpacing, setLetterSpacing] = useState<number>(0); // px
+  const [dx, setDx] = useState<number>(0); // смещение B
+  const [dy, setDy] = useState<number>(0);
+  const [overlayMode, setOverlayMode] = useState<OverlayMode>("red-cyan"); // 'red-cyan' | 'difference'
+  const [showChecker, setShowChecker] = useState<boolean>(true);
+  const [stroke, setStroke] = useState<boolean>(false);
+  const [strokeWidth, setStrokeWidth] = useState<number>(1);
+  const [gridOpen, setGridOpen] = useState<boolean>(false);
+  const [isDragging, setIsDragging] = useState<boolean>(false); // подсветка Drop-зоны
+  const dragCounter = useRef<number>(0);
+  const [gridCharsPreset, setGridCharsPreset] = useState<GridPreset>("basic-latin");
+  const [customChars, setCustomChars] = useState<string>("");
+  const [messages, setMessages] = useState<Msg[]>([]);
 
-  const canvasRef = useRef(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const supported = typeof window !== "undefined" && "FontFace" in window;
+  const supported: boolean = typeof window !== "undefined" && ("FontFace" in window);
 
-  const gridChars = useMemo(() => {
+  const gridChars = useMemo<string>(() => {
     switch (gridCharsPreset) {
       case "caps":
         return "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -57,14 +72,14 @@ export default function FontOverlayComparator() {
 
   // Глобально предотвращаем открытие файла браузером при перетаскивании
   useEffect(() => {
-    const prevent = (e) => { e.preventDefault(); };
-    window.addEventListener('dragover', prevent);
+    const prevent = (e: DragEvent) => { e.preventDefault(); };
+    window.addEventListener('dragover', prevent as EventListener);
     return () => {
-      window.removeEventListener('dragover', prevent);
+      window.removeEventListener('dragover', prevent as EventListener);
     };
   }, []);
 
-  async function loadFontFromFile(file, label) {
+  async function loadFontFromFile(file: File, label: SlotLabel): Promise<LoadedFont | null> {
     try {
       const ab = await file.arrayBuffer();
       const uniqueName = `${label}_${file.name.replace(/\W+/g, "_")}_${Date.now()}`;
@@ -72,23 +87,24 @@ export default function FontOverlayComparator() {
       const loaded = await face.load();
       document.fonts.add(loaded);
       return { name: uniqueName, displayName: file.name, face: loaded };
-    } catch (e) {
-      pushMessage(`Не удалось загрузить шрифт ${file?.name || ""}: ${e?.message || e}`);
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      pushMessage(`Не удалось загрузить шрифт ${file.name}: ${errMsg}`);
       return null;
     }
   }
 
-  function pushMessage(msg) {
-    setMessages((arr) => [{ id: Date.now() + Math.random(), msg }, ...arr].slice(0, 5));
+  function pushMessage(msg: string): void {
+    setMessages((arr: Msg[]) => [{ id: Date.now() + Math.random(), msg }, ...arr].slice(0, 5));
   }
 
-  function humanDevicePixelRatio() {
+  function humanDevicePixelRatio(): number {
     const dpr = window.devicePixelRatio || 1;
     // ограничим до 2, чтобы не раздувать память
     return Math.min(2, Math.max(1, dpr));
   }
 
-  function drawChecker(ctx, w, h, size = 16) {
+  function drawChecker(ctx: CanvasRenderingContext2D, w: number, h: number, size: number = 16): void {
     for (let y = 0; y < h; y += size) {
       for (let x = 0; x < w; x += size) {
         const on = ((x / size) + (y / size)) % 2 === 0;
@@ -98,11 +114,21 @@ export default function FontOverlayComparator() {
     }
   }
 
-  function drawString(ctx, fontName, content, x, y, color, _letterSpacing, _stroke, _strokeWidth) {
+  function drawString(
+    ctx: CanvasRenderingContext2D,
+    fontName: string,
+    content: string,
+    x: number,
+    y: number,
+    color: string,
+    _letterSpacing: number,
+    _stroke: boolean,
+    _strokeWidth: number
+  ): void {
     ctx.fillStyle = color;
     ctx.strokeStyle = color;
     ctx.lineWidth = _strokeWidth;
-    ctx.font = `${fontSize}px \"${fontName}\"`;
+    ctx.font = `${fontSize}px "${fontName}"`;
     ctx.textBaseline = "alphabetic";
     ctx.fontKerning = "normal";
 
@@ -121,8 +147,13 @@ export default function FontOverlayComparator() {
     }
   }
 
-  function measureString(ctx, fontName, content, _letterSpacing) {
-    ctx.font = `${fontSize}px \"${fontName}\"`;
+  function measureString(
+    ctx: CanvasRenderingContext2D,
+    fontName: string,
+    content: string,
+    _letterSpacing: number
+  ): number {
+    ctx.font = `${fontSize}px "${fontName}"`;
     const m = ctx.measureText(content);
     if (!_letterSpacing) return m.width;
     // примитивная оценка для letterSpacing>0
@@ -133,10 +164,11 @@ export default function FontOverlayComparator() {
     return w;
   }
 
-  function drawCanvas() {
+  function drawCanvas(): void {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
+    if (!ctx) return;
     const pad = 32;
     const dpr = humanDevicePixelRatio();
 
@@ -162,8 +194,8 @@ export default function FontOverlayComparator() {
     // точный расчёт ширины с учётом текста/шрифтов
     const tmp = document.createElement("canvas").getContext("2d");
     if (!tmp) return;
-    let wA = measureString(tmp, fontA.name, text, letterSpacing);
-    let wB = measureString(tmp, fontB.name, text, letterSpacing);
+    const wA = measureString(tmp, fontA.name, text, letterSpacing);
+    const wB = measureString(tmp, fontB.name, text, letterSpacing);
     w = Math.max(320, Math.ceil(Math.max(wA, wB) + pad * 2));
     h = Math.max(120, Math.ceil(fontSize * 1.8 + pad * 2));
     canvas.width = Math.floor(w * dpr);
@@ -204,7 +236,7 @@ export default function FontOverlayComparator() {
     ctx.fillText(`B: ${fontB.displayName}`, w / 2, h - 8);
   }
 
-    async function onDrop(e) {
+  async function onDrop(e: ReactDragEvent<HTMLElement>): Promise<void> {
     e.preventDefault();
     e.stopPropagation();
     dragCounter.current = 0;
@@ -230,22 +262,22 @@ export default function FontOverlayComparator() {
     }
   }
 
-  function onDragOver(e) {
+  function onDragOver(e: ReactDragEvent<HTMLElement>): void {
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
   }
-  function onDragEnter(e) {
+  function onDragEnter(e: ReactDragEvent<HTMLElement>): void {
     e.preventDefault();
     dragCounter.current += 1;
     setIsDragging(true);
   }
-  function onDragLeave(e) {
+  function onDragLeave(e: ReactDragEvent<HTMLElement>): void {
     e.preventDefault();
     dragCounter.current -= 1;
     if (dragCounter.current <= 0) setIsDragging(false);
   }
 
-  async function handleFilePick(e, which) {
+  async function handleFilePick(e: ChangeEvent<HTMLInputElement>, which: SlotLabel): Promise<void> {
     const file = e.target.files?.[0];
     if (!file) return;
     const loaded = await loadFontFromFile(file, which);
@@ -253,7 +285,7 @@ export default function FontOverlayComparator() {
     if (which === "A") setFontA(loaded); else setFontB(loaded);
   }
 
-  function exportPNG() {
+  function exportPNG(): void {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const url = canvas.toDataURL("image/png");
@@ -263,19 +295,19 @@ export default function FontOverlayComparator() {
     a.click();
   }
 
-  function reset(which) {
+  function reset(which: SlotLabel): void {
     if (which === "A") setFontA(null);
     else if (which === "B") setFontB(null);
   }
 
   // Рендер ячеек для грида символов
-  function GlyphCell({ ch }) {
-    const cellRef = useRef(null);
+  function GlyphCell({ ch }: { ch: string }) {
+    const cellRef = useRef<HTMLCanvasElement | null>(null);
     useEffect(() => {
       const canvas = cellRef.current;
       if (!canvas || !fontA || !fontB) return;
       const ctx = canvas.getContext("2d");
-      const size = 72;
+      if (!ctx) return;
       const w = 120, h = 120; // фиксировано для стабильности
       const dpr = humanDevicePixelRatio();
       canvas.width = Math.floor(w * dpr);
@@ -286,7 +318,7 @@ export default function FontOverlayComparator() {
       if (showChecker) drawChecker(ctx, w, h, 12); else ctx.clearRect(0, 0, w, h);
       const x = Math.floor(w / 2);
       const y = Math.floor(h * 0.65);
-      ctx.textAlign = "center";
+      (ctx as CanvasRenderingContext2D).textAlign = "center";
       if (overlayMode === "difference") {
         drawString(ctx, fontA.name, ch, x, y, "#ffffff", letterSpacing, stroke, strokeWidth);
         ctx.globalCompositeOperation = "difference";
@@ -313,7 +345,7 @@ export default function FontOverlayComparator() {
   }
 
   // Метрики ширины строки
-  const metrics = useMemo(() => {
+  const metrics = useMemo<{ wA: number; wB: number; diff: number } | null>(() => {
     if (!fontA || !fontB) return null;
     const c = document.createElement("canvas").getContext("2d");
     if (!c) return null;
@@ -496,7 +528,7 @@ export default function FontOverlayComparator() {
                   <label className="block text-sm font-medium mb-1">Набор символов</label>
                   <select
                     value={gridCharsPreset}
-                    onChange={(e) => setGridCharsPreset(e.target.value)}
+                    onChange={(e) => setGridCharsPreset(e.target.value as GridPreset)}
                     className="rounded-xl border border-neutral-300 p-2"
                   >
                     <option value="basic-latin">Basic Latin</option>
@@ -563,11 +595,11 @@ export default function FontOverlayComparator() {
   );
 }
 
-function Card({ children }) {
+function Card({ children }: { children: ReactNode }) {
   return <div className="bg-white border border-neutral-200 rounded-2xl p-4 shadow-sm">{children}</div>;
 }
 
-function Toggle({ active, onClick, children }) {
+function Toggle({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
       onClick={onClick}
@@ -581,7 +613,7 @@ function Toggle({ active, onClick, children }) {
   );
 }
 
-function FilePicker({ onChange }) {
+function FilePicker({ onChange }: { onChange: (e: ChangeEvent<HTMLInputElement>) => void }) {
   return (
     <label className="block border border-neutral-300 rounded-xl p-3 hover:bg-neutral-50 cursor-pointer">
       <div className="text-sm text-neutral-700">Выберите файл шрифта (.ttf, .otf, .woff, .woff2)</div>
